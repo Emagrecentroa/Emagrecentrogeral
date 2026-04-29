@@ -169,8 +169,8 @@
     </div>
   </div>
   <div class="meta-field">
-    <label>Vendedora</label>
-    <input type="text" id="vendedor" placeholder="Nome de quem está atendendo">
+    <label>Atendente</label>
+    <input type="text" id="vendedor" placeholder="Nome do atendente">
   </div>
 </div>
 
@@ -196,10 +196,6 @@
         <button class="btn primary" onclick="window.print()">Imprimir / PDF</button>
         <button class="btn danger" onclick="limpar()">Limpar tudo</button>
       </div>
-      <button class="btn" onclick="abrirHistorico()" style="border-color:#c9a97a;color:#c9a97a;display:flex;align-items:center;justify-content:center;gap:8px;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Histórico de orçamentos
-      </button>
     </div>
   </div>
 </div>
@@ -275,7 +271,13 @@ const CATS = [
     note: "Pacotes a partir de 5 sessões",
     tipo: "sessoes",
     items: [
-      { nome: "Drenagem manual" },
+      {
+        nome: "Drenagem manual por área",
+        pkgsOwn: [
+          { label: "Avulso",      parcBase: null,  nParcelas: null, interno: false },
+          { label: "12x R$50,00", parcBase: 50.00, nParcelas: 12,  interno: false },
+        ]
+      },
       { nome: "Drenagem mecânica" },
     ],
     pkgs: [
@@ -442,11 +444,15 @@ function buildList() {
       intRow.className = 'internal-row';
       const allPills = [];
 
+      // Use item-specific pkgs if defined, otherwise use category pkgs
+      const activePkgs = item.pkgsOwn || cat.pkgs;
+
       if (cat.tipo === 'sessoes') {
-        // Botões de sessões
+        // Botões de sessões - label muda se for "por área"
+        const isArea = item.nome && item.nome.includes('área');
         const sessRow = document.createElement('div');
         sessRow.className = 'sessoes-row';
-        sessRow.innerHTML = `<span class="sessoes-label">Sessões:</span>`;
+        sessRow.innerHTML = `<span class="sessoes-label">${isArea ? 'Áreas:' : 'Sessões:'}</span>`;
         const sessWrap = document.createElement('div');
         sessWrap.className = 'sessoes-btns';
         SESSOES_OPTS.forEach(n => {
@@ -463,13 +469,13 @@ function buildList() {
         sessRow.appendChild(sessWrap);
         row.appendChild(sessRow);
 
-        const hasInternal = cat.pkgs.some(p => p.interno);
+        const hasInternal = activePkgs.some(p => p.interno);
         if (hasInternal) {
           const badge = document.createElement('span');
           badge.className = 'internal-badge'; badge.textContent = 'interno';
           intRow.appendChild(badge);
         }
-        buildPills(allPills, cat.pkgs, key, pkgOpts, intRow);
+        buildPills(allPills, activePkgs, key, pkgOpts, intRow);
 
       } else {
         // Fixo (tirzepatida) — sem sessões
@@ -518,9 +524,10 @@ function recalc() {
       if (selectedPkg.total != null) selectedTotal += selectedPkg.total;
       if (integralPkg && integralPkg.total != null) integralTotal += integralPkg.total;
     } else {
-      const pkgs = cat.pkgs;
+      const pkgs = cat.items[ii].pkgsOwn || cat.pkgs;
       const selectedPkg = pkgs[s.pkgIdx];
-      const integralPkg = pkgs.find(p => !p.interno && p.parcBase != null);
+      const activePkgsI = cat.items[ii].pkgsOwn || cat.pkgs;
+      const integralPkg = activePkgsI.find(p => !p.interno && p.parcBase != null);
       if (selectedPkg.parcBase) {
         selectedTotal += calcTotalSessoes(selectedPkg, s.sessoes).total;
       } else if (!selectedPkg.parcBase && !selectedPkg.interno) {
@@ -561,12 +568,15 @@ function gerarTextoWpp() {
       const pkg = item.pkgs[s.pkgIdx];
       linhas.push(`• ${item.nome} — 4 aplicações — ${fmt(pkg.total)}`);
     } else {
-      const pkg = cat.pkgs[s.pkgIdx];
+      const activePkgsW = cat.items[ii].pkgsOwn || cat.pkgs;
+      const pkg = activePkgsW[s.pkgIdx];
+      const isArea = item.nome && item.nome.includes('área');
+      const unidade = isArea ? 'áreas' : 'sessões';
       if (!pkg.parcBase) {
-        linhas.push(`• ${item.nome} — ${s.sessoes} sessões (a combinar)`);
+        linhas.push(`• ${item.nome} — ${s.sessoes} ${unidade} (a combinar)`);
       } else {
         const r = calcTotalSessoes(pkg, s.sessoes);
-        linhas.push(`• ${item.nome} — ${s.sessoes} sessões · ${r.nParcelas}x ${fmt(r.parcela)} = ${fmt(r.total)}`);
+        linhas.push(`• ${item.nome} — ${s.sessoes} ${unidade} · ${r.nParcelas}x ${fmt(r.parcela)} = ${fmt(r.total)}`);
       }
     }
   });
@@ -579,7 +589,7 @@ function gerarTextoWpp() {
   txt += `*Orçamento — ${data_em}*\n\n`;
   const vendedor = document.getElementById('vendedor').value;
   txt += `👤 *Cliente:* ${cliente}\n`;
-  if (vendedor) txt += `🧑‍💼 *Vendedora:* ${vendedor}\n`;
+  if (vendedor) txt += `🧑‍💼 *Atendente:* ${vendedor}\n`;
   txt += `\n*Procedimentos:*\n${linhas.join('\n')}\n\n`;
   const econRow = document.getElementById('economia-row');
   const economia = econRow.style.display !== 'none' ? document.getElementById('economia-val').textContent : null;
@@ -594,7 +604,6 @@ function gerarTextoWpp() {
 function enviarWhatsApp() {
   const txt = gerarTextoWpp();
   if (!txt) { alert('Selecione pelo menos um procedimento.'); return; }
-  salvarNoHistorico(txt);
   const contato = document.getElementById('contato').value || '';
   const numeros = contato.replace(/\D/g, '');
   const base = numeros.length >= 8 ? `https://wa.me/55${numeros}` : `https://wa.me/`;
@@ -692,137 +701,6 @@ buildList();
   const mBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
   document.getElementById('manifest-placeholder').href = URL.createObjectURL(mBlob);
 })();
-</script>
-
-
-<div class="modal-overlay" id="modal-historico">
-  <div class="modal">
-    <div class="modal-handle"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h2 style="margin:0;">Histórico</h2>
-      <button onclick="limparHistorico()" style="font-family:Jost,sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;background:transparent;border:1px solid #e0b0a0;color:#b05030;border-radius:6px;padding:6px 12px;cursor:pointer;">Limpar</button>
-    </div>
-    <div id="hist-lista"></div>
-    <div style="margin-top:16px;">
-      <button class="btn primary" onclick="fecharHistorico()" style="width:100%;padding:14px;">Fechar</button>
-    </div>
-  </div>
-</div>
-
-<script>
-// ── SERVICE WORKER: cache offline ──
-if ('serviceWorker' in navigator) {
-  const swCode = `
-const CACHE = 'emagrecentro-v1';
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])));
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
-  self.clients.claim();
-});
-self.addEventListener('fetch', e => {
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-    const clone = res.clone();
-    caches.open(CACHE).then(c => c.put(e.request, clone));
-    return res;
-  }).catch(() => caches.match('./index.html'))));
-});
-  `;
-  const blob = new Blob([swCode], {type: 'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
-}
-
-// ── HISTÓRICO LOCAL ──
-const HIST_KEY = 'emagrecentro_historico';
-const DRAFT_KEY = 'emagrecentro_rascunho';
-
-function salvarRascunho() {
-  try {
-    const draft = {
-      cliente: document.getElementById('cliente').value,
-      contato: document.getElementById('contato').value,
-      vendedor: document.getElementById('vendedor').value,
-      obs: document.getElementById('obs').value,
-    };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  } catch(e) {}
-}
-
-function restaurarRascunho() {
-  try {
-    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}');
-    if (draft.cliente) document.getElementById('cliente').value = draft.cliente;
-    if (draft.contato) document.getElementById('contato').value = draft.contato;
-    if (draft.vendedor) document.getElementById('vendedor').value = draft.vendedor;
-    if (draft.obs) document.getElementById('obs').value = draft.obs;
-  } catch(e) {}
-}
-
-function salvarNoHistorico(txt) {
-  try {
-    const hist = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
-    hist.unshift({
-      data: new Date().toLocaleString('pt-BR'),
-      cliente: document.getElementById('cliente').value || '(sem nome)',
-      total: document.getElementById('total-final').textContent,
-      resumo: txt
-    });
-    // Manter só os últimos 30
-    if (hist.length > 30) hist.pop();
-    localStorage.setItem(HIST_KEY, JSON.stringify(hist));
-  } catch(e) {}
-}
-
-// ── TELA DE HISTÓRICO ──
-function abrirHistorico() {
-  try {
-    const hist = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
-    const modal = document.getElementById('modal-historico');
-    const lista = document.getElementById('hist-lista');
-    if (!hist.length) {
-      lista.innerHTML = '<p style="color:#aaa;font-size:14px;text-align:center;padding:20px 0;">Nenhum orçamento salvo ainda.</p>';
-    } else {
-      lista.innerHTML = hist.map((h, i) => `
-        <div style="border-bottom:1px solid #f0ece6;padding:14px 0;cursor:pointer;" onclick="verHistoricoItem(${i})">
-          <div style="font-size:15px;font-weight:500;color:#1a1a1a;">${h.cliente}</div>
-          <div style="font-size:12px;color:#aaa;margin-top:3px;">${h.data} · <span style="color:#c9a97a;font-weight:600;">${h.total}</span></div>
-        </div>
-      `).join('');
-    }
-    modal.classList.add('active');
-  } catch(e) {}
-}
-
-function verHistoricoItem(i) {
-  try {
-    const hist = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
-    const item = hist[i];
-    document.getElementById('resumo-texto').textContent = item.resumo;
-    fecharHistorico();
-    document.getElementById('modal').classList.add('active');
-  } catch(e) {}
-}
-
-function fecharHistorico() {
-  document.getElementById('modal-historico').classList.remove('active');
-}
-
-function limparHistorico() {
-  if (!confirm('Apagar todo o histórico?')) return;
-  localStorage.removeItem(HIST_KEY);
-  abrirHistorico();
-}
-
-// Auto-salvar rascunho a cada alteração nos campos
-['cliente','contato','vendedor','obs'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('input', salvarRascunho);
-});
-
-// Restaurar rascunho ao carregar
-window.addEventListener('load', restaurarRascunho);
 </script>
 
 </body>
