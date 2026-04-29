@@ -398,7 +398,13 @@ function buildPills(allPills, pkgList, key, pkgOpts, intRow) {
       intRow.appendChild(pill);
     } else {
       pill.className = 'pkg-pill' + (pi === 0 ? ' active' : '');
-      pill.textContent = pkg.label;
+      if (pkg.parcBase) {
+        pill.setAttribute('data-parc-base', pkg.parcBase);
+        pill.setAttribute('data-n-parcelas', pkg.nParcelas);
+        pill.textContent = pkg.nParcelas + 'x ' + fmt(pkg.parcBase);
+      } else {
+        pill.textContent = pkg.label;
+      }
       pkgOpts.appendChild(pill);
     }
     allPills.push(pill);
@@ -406,8 +412,25 @@ function buildPills(allPills, pkgList, key, pkgOpts, intRow) {
       state[key].pkgIdx = pi;
       allPills.forEach((p, i) => p.classList.toggle('active', i === pi));
       updatePrecoDisplay(key);
+      updatePillLabels(key);
       recalc();
     });
+  });
+}
+
+function updatePillLabels(key) {
+  const s = state[key];
+  const preco = document.getElementById('preco-' + key);
+  if (!preco) return;
+  const procRow = preco.closest('.proc-row');
+  if (!procRow) return;
+  procRow.querySelectorAll('.pkg-pill[data-parc-base]').forEach(pill => {
+    const parcBase = parseFloat(pill.getAttribute('data-parc-base'));
+    const nParcelas = parseInt(pill.getAttribute('data-n-parcelas'));
+    if (!parcBase || !nParcelas) return;
+    const mult = s.sessoes / 5;
+    const parcela = +(parcBase * mult).toFixed(2);
+    pill.textContent = nParcelas + 'x ' + fmt(parcela);
   });
 }
 
