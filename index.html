@@ -169,8 +169,8 @@
     </div>
   </div>
   <div class="meta-field">
-    <label>Vendedora</label>
-    <input type="text" id="vendedor" placeholder="Nome de quem está atendendo">
+    <label>Atendente</label>
+    <input type="text" id="vendedor" placeholder="Nome do atendente">
   </div>
 </div>
 
@@ -271,7 +271,13 @@ const CATS = [
     note: "Pacotes a partir de 5 sessões",
     tipo: "sessoes",
     items: [
-      { nome: "Drenagem manual" },
+      {
+        nome: "Drenagem manual por área",
+        pkgsOwn: [
+          { label: "Avulso",      parcBase: null,  nParcelas: null, interno: false },
+          { label: "12x R$50,00", parcBase: 50.00, nParcelas: 12,  interno: false },
+        ]
+      },
       { nome: "Drenagem mecânica" },
     ],
     pkgs: [
@@ -461,13 +467,17 @@ function buildList() {
         sessRow.appendChild(sessWrap);
         row.appendChild(sessRow);
 
-        const hasInternal = cat.pkgs.some(p => p.interno);
+        const activePkgs = item.pkgsOwn || cat.pkgs;
+        const hasInternal = activePkgs.some(p => p.interno);
         if (hasInternal) {
           const badge = document.createElement('span');
           badge.className = 'internal-badge'; badge.textContent = 'interno';
           intRow.appendChild(badge);
         }
-        buildPills(allPills, cat.pkgs, key, pkgOpts, intRow);
+        // Show "Áreas" label for drenagem manual por área
+        const isArea = item.nome && item.nome.includes('área');
+        if (isArea) sessRow.querySelector('.sessoes-label').textContent = 'Áreas:';
+        buildPills(allPills, activePkgs, key, pkgOpts, intRow);
 
       } else {
         // Fixo (tirzepatida) — sem sessões
@@ -516,9 +526,9 @@ function recalc() {
       if (selectedPkg.total != null) selectedTotal += selectedPkg.total;
       if (integralPkg && integralPkg.total != null) integralTotal += integralPkg.total;
     } else {
-      const pkgs = cat.pkgs;
+      const pkgs = cat.items[ii].pkgsOwn || cat.pkgs;
       const selectedPkg = pkgs[s.pkgIdx];
-      const integralPkg = pkgs.find(p => !p.interno && p.parcBase != null);
+      const integralPkg = (cat.items[ii].pkgsOwn || cat.pkgs).find(p => !p.interno && p.parcBase != null);
       if (selectedPkg.parcBase) {
         selectedTotal += calcTotalSessoes(selectedPkg, s.sessoes).total;
       } else if (!selectedPkg.parcBase && !selectedPkg.interno) {
@@ -559,12 +569,15 @@ function gerarTextoWpp() {
       const pkg = item.pkgs[s.pkgIdx];
       linhas.push(`• ${item.nome} — 4 aplicações — ${fmt(pkg.total)}`);
     } else {
-      const pkg = cat.pkgs[s.pkgIdx];
+      const activePkgsW = cat.items[ii].pkgsOwn || cat.pkgs;
+      const pkg = activePkgsW[s.pkgIdx];
+      const isAreaW = item.nome && item.nome.includes('área');
+      const unidade = isAreaW ? 'áreas' : 'sessões';
       if (!pkg.parcBase) {
-        linhas.push(`• ${item.nome} — ${s.sessoes} sessões (a combinar)`);
+        linhas.push(`• ${item.nome} — ${s.sessoes} ${unidade} (a combinar)`);
       } else {
         const r = calcTotalSessoes(pkg, s.sessoes);
-        linhas.push(`• ${item.nome} — ${s.sessoes} sessões · ${r.nParcelas}x ${fmt(r.parcela)} = ${fmt(r.total)}`);
+        linhas.push(`• ${item.nome} — ${s.sessoes} ${unidade} · ${r.nParcelas}x ${fmt(r.parcela)} = ${fmt(r.total)}`);
       }
     }
   });
@@ -577,7 +590,7 @@ function gerarTextoWpp() {
   txt += `*Orçamento — ${data_em}*\n\n`;
   const vendedor = document.getElementById('vendedor').value;
   txt += `👤 *Cliente:* ${cliente}\n`;
-  if (vendedor) txt += `🧑‍💼 *Vendedora:* ${vendedor}\n`;
+  if (vendedor) txt += `🧑‍💼 *Atendente:* ${vendedor}\n`;
   txt += `\n*Procedimentos:*\n${linhas.join('\n')}\n\n`;
   const econRow = document.getElementById('economia-row');
   const economia = econRow.style.display !== 'none' ? document.getElementById('economia-val').textContent : null;
